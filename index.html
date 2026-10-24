@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Lantern Run</title>
+<meta name="description" content="Lantern Run is a free pixel arcade game. Carry a lantern down a night river, catch fireflies and dodge stones. Compete on the online leaderboard.">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=VT323&display=swap">
+<style>
+  /* Layout: one narrow column like a handheld screen. Title and stats on top, segmented flame bar, pixel canvas with hard-edged cards over it. */
+  :root {
+    --ink: #120f1d;
+    --deep: #26305e;
+    --stone: #4f68a8;
+    --mist: #a9bce0;
+    --flame: #ff9f1c;
+    --glow: #fff1b0;
+    --hit: #e8433a;
+    --font-display: "Silkscreen", "Courier New", monospace;
+    --font-text: "VT323", "Courier New", monospace;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--ink); }
+  body { margin: 0; }
+  body {
+    color: var(--mist);
+    font-family: var(--font-text);
+    font-size: 1.25rem;
+    padding-block: 16px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  .wrap {
+    width: min(100%, 440px);
+    margin-inline: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  header { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+  .title { min-width: 0; }
+  h1 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--glow);
+    text-transform: uppercase;
+  }
+  .byline { font-size: 1.1rem; color: var(--stone); margin-top: 4px; }
+  .stats { display: flex; gap: 14px; }
+  .stat { display: flex; flex-direction: column; align-items: flex-end; }
+  .stat b { font-family: var(--font-display); font-size: 0.95rem; color: var(--mist); font-variant-numeric: tabular-nums; }
+  .stat small { font-size: 1rem; line-height: 1; color: var(--stone); }
+  .meter { display: flex; gap: 3px; height: 14px; }
+  .meter span { flex: 1; background: var(--deep); }
+  .meter span.on { background: var(--flame); }
+  .meter.low span.on { background: var(--hit); }
+  .stage {
+    position: relative;
+    width: min(100%, calc((100dvh - 200px) * 2 / 3));
+    min-width: 260px;
+    margin-inline: auto;
+    aspect-ratio: 2 / 3;
+    border: 4px solid var(--deep);
+    background: var(--ink);
+  }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; image-rendering: pixelated; touch-action: none; }
+  .card {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 20px;
+    background: rgba(18, 15, 29, 0.82);
+  }
+  .card[hidden] { display: none; }
+  .card h2 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: clamp(1.4rem, 7vw, 1.9rem);
+    line-height: 1.15;
+    color: var(--glow);
+    text-transform: uppercase;
+  }
+  .card p { margin: 0; max-width: 30ch; line-height: 1.15; font-size: 1.35rem; }
+  .card p em { font-style: normal; color: var(--glow); }
+  .card p strong { font-weight: 400; color: var(--stone); }
+  .result { display: flex; gap: 18px; }
+  .result div { display: flex; flex-direction: column; }
+  .result b { font-family: var(--font-display); font-size: 1.1rem; color: var(--mist); font-variant-numeric: tabular-nums; }
+  .result small { font-size: 1rem; line-height: 1; color: var(--stone); }
+  button {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    padding: 12px 16px;
+    border: 3px solid var(--ink);
+    background: var(--flame);
+    color: var(--ink);
+    cursor: pointer;
+    box-shadow: 4px 4px 0 var(--deep);
+  }
+  button:hover { background: var(--glow); }
+  button:active { transform: translate(3px, 3px); box-shadow: 1px 1px 0 var(--deep); }
+  button:focus-visible { outline: 3px solid var(--mist); outline-offset: 3px; }
+  .hint { font-size: 1.1rem; color: var(--stone); text-align: center; }
+  .namefield { display: flex; flex-direction: column; gap: 4px; width: 100%; max-width: 260px; }
+  .namefield label { color: var(--stone); font-size: 1.15rem; line-height: 1; }
+  .namefield input {
+    font-family: var(--font-display);
+    font-size: 0.95rem;
+    padding: 10px 12px;
+    border: 3px solid var(--deep);
+    background: var(--ink);
+    color: var(--glow);
+    border-radius: 0;
+    width: 100%;
+  }
+  .namefield input::placeholder { color: var(--stone); }
+  .namefield input:focus-visible { outline: 3px solid var(--mist); outline-offset: 2px; }
+  .nameerr { color: var(--hit); font-size: 1.1rem; min-height: 1em; line-height: 1; }
+  .board { border: 4px solid var(--deep); padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .board h3 { margin: 0; font-family: var(--font-display); font-size: 0.95rem; color: var(--glow); text-transform: uppercase; }
+  .board ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+  .board li {
+    display: grid;
+    grid-template-columns: 2.2ch minmax(0, 1fr) auto auto;
+    gap: 12px;
+    align-items: baseline;
+    padding: 3px 6px;
+    border-bottom: 2px dotted var(--deep);
+  }
+  .board li:last-child { border-bottom: 0; }
+  .board li.me { background: var(--deep); color: var(--glow); }
+  .board .rank { font-family: var(--font-display); font-size: 0.8rem; color: var(--stone); }
+  .board li.me .rank { color: var(--flame); }
+  .board .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .board .dist { font-family: var(--font-display); font-size: 0.85rem; font-variant-numeric: tabular-nums; text-align: right; }
+  .board .flies { color: var(--stone); font-variant-numeric: tabular-nums; min-width: 4ch; text-align: right; }
+  .board .empty { color: var(--stone); padding: 3px 6px; }
+  .board .note { color: var(--stone); font-size: 1.05rem; min-height: 1em; }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="title">
+      <h1>Lantern Run</h1>
+      <div class="byline">by Felix Zheng</div>
+    </div>
+    <div class="stats">
+      <div class="stat"><b id="sDist">0m</b><small>dist</small></div>
+      <div class="stat"><b id="sFly">0</b><small>flies</small></div>
+      <div class="stat"><b id="sBest">0m</b><small>best</small></div>
+    </div>
+  </header>
+  <div class="meter" id="meter" role="progressbar" aria-label="Lantern flame" aria-valuemin="0" aria-valuemax="100"></div>
+
+  <div class="stage" id="stage">
+    <canvas id="cv" width="160" height="240"></canvas>
+    <div class="card" id="startCard">
+      <h2>Carry the flame downstream</h2>
+      <p>Your lantern burns down as you go. Catch <em>fireflies</em> to feed it. <strong>Stones</strong> only show where the light reaches, and every hit costs flame.</p>
+      <div class="namefield">
+        <label for="nameInput">Your name</label>
+        <input id="nameInput" type="text" maxlength="16" autocomplete="nickname" placeholder="Type a name" />
+        <div class="nameerr" id="nameErr"></div>
+      </div>
+      <button id="startBtn" type="button">Light it</button>
+    </div>
+    <div class="card" id="overCard" hidden>
+      <h2 id="overTitle">The flame went out</h2>
+      <div class="result">
+        <div><b id="rDist">0m</b><small>dist</small></div>
+        <div><b id="rFly">0</b><small>flies</small></div>
+        <div><b id="rBest">0m</b><small>best</small></div>
+      </div>
+      <button id="againBtn" type="button">Run again</button>
+    </div>
+  </div>
+  <div class="hint">drag or move to steer / arrows or A D</div>
+  <section class="board" aria-labelledby="boardTitle">
+    <h3 id="boardTitle">Leaderboard</h3>
+    <ol id="boardList"><li class="empty-row" style="display:block"><span class="empty">Loading runs...</span></li></ol>
+    <div class="note" id="boardNote"></div>
+  </section>
+</div>
+
+<script>
+(function () {
+  var W = 400, H = 600, PW = 160, PH = 240, S = PW / W;
+  var cv = document.getElementById("cv");
+  var ctx = cv.getContext("2d");
+
+  var elDist = document.getElementById("sDist");
+  var elFly = document.getElementById("sFly");
+  var elBest = document.getElementById("sBest");
+  var meter = document.getElementById("meter");
+  var startCard = document.getElementById("startCard");
+  var overCard = document.getElementById("overCard");
+  var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  var SEGS = 12, segEls = [];
+  for (var q = 0; q < SEGS; q++) { var sp = document.createElement("span"); meter.appendChild(sp); segEls.push(sp); }
+
+  var best = 0;
+  try { best = parseInt(localStorage.getItem("lantern-run-best") || "0", 10) || 0; } catch (e) {}
+  elBest.textContent = best + "m";
+
+  var C = {
+    deep: "#26305e", deeper: "#1b2349", stone: "#4f68a8", mist: "#a9bce0",
+    flame: "#ff9f1c", glow: "#fff1b0", hit: "#e8433a", brown: "#5a3a1e"
+  };
+  var BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+
+  var state = "ready", g;
+  var keys = { left: false, right: false };
+  var targetX = W / 2;
+
+  var streaks = [];
+  for (var i = 0; i < 30; i++) streaks.push({ x: Math.random() * W, y: Math.random() * H, len: 20 + Math.random() * 50, c: Math.random() < 0.5 ? C.deeper : C.deep });
+
+  function newGame() {
+    g = { px: W / 2, py: 500, light: 100, dist: 0, flies: 0, t: 0, stones: [], fireflies: [], sparks: [], stoneT: 1.2, flyT: 0.5, flash: 0, shake: 0 };
+    targetX = W / 2;
+  }
+  newGame();
+
+  function makeStone() {
+    var r = 16 + Math.random() * 12;
+    return { x: 24 + Math.random() * (W - 48), y: -40, r: r * 0.92, vis: r, n1: Math.random() * 2 - 1, n2: Math.random() * 2 - 1 };
+  }
+  function speed() { return Math.min(120 + g.dist * 0.9, 330); }
+  function lightRadius() { return 60 + g.light * 1.5; }
+
+  function burst(x, y, color, n) {
+    for (var i = 0; i < n; i++) {
+      var a = Math.random() * Math.PI * 2, v = 40 + Math.random() * 110;
+      g.sparks.push({ x: x, y: y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.35 + Math.random() * 0.3, color: color });
+    }
+  }
+
+  function update(dt) {
+    g.t += dt;
+    var spd = speed();
+    g.dist += spd * dt / 40;
+    g.light -= (5 + Math.min(g.dist / 40, 6)) * dt;
+
+    if (keys.left) targetX -= 420 * dt;
+    if (keys.right) targetX += 420 * dt;
+    targetX = Math.max(22, Math.min(W - 22, targetX));
+    g.px += (targetX - g.px) * Math.min(1, dt * 14);
+
+    g.stoneT -= dt;
+    if (g.stoneT <= 0) { g.stones.push(makeStone()); g.stoneT = Math.max(0.3, 1.0 - g.dist / 450) * (0.7 + Math.random() * 0.6); }
+    g.flyT -= dt;
+    if (g.flyT <= 0) { g.fireflies.push({ x: 24 + Math.random() * (W - 48), y: -20, ph: Math.random() * 6, bx: 0 }); g.flyT = 0.8 + Math.random() * 0.9; }
+
+    var i, s, f;
+    for (i = g.stones.length - 1; i >= 0; i--) {
+      s = g.stones[i];
+      s.y += spd * dt;
+      if (Math.hypot(s.x - g.px, s.y - g.py) < s.r + 13) {
+        g.light -= 30; g.flash = 0.25; g.shake = reduceMotion ? 0 : 0.25;
+        burst(s.x, s.y, C.mist, 8);
+        g.stones.splice(i, 1);
+        continue;
+      }
+      if (s.y > H + 50) g.stones.splice(i, 1);
+    }
+    for (i = g.fireflies.length - 1; i >= 0; i--) {
+      f = g.fireflies[i];
+      f.y += spd * dt * 0.8;
+      f.ph += dt * 3;
+      f.bx = Math.sin(f.ph) * 14;
+      var fx = f.x + f.bx;
+      if (Math.hypot(fx - g.px, f.y - g.py) < 24) {
+        g.light = Math.min(100, g.light + 14); g.flies++;
+        burst(fx, f.y, C.glow, 10);
+        g.fireflies.splice(i, 1);
+        continue;
+      }
+      if (f.y > H + 30) g.fireflies.splice(i, 1);
+    }
+    for (i = g.sparks.length - 1; i >= 0; i--) {
+      var p = g.sparks[i];
+      p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt;
+      if (p.life <= 0) g.sparks.splice(i, 1);
+    }
+    for (i = 0; i < streaks.length; i++) {
+      var st = streaks[i];
+      st.y += spd * dt * 0.9;
+      if (st.y - st.len > H) { st.y = -10; st.x = Math.random() * W; }
+    }
+    g.flash = Math.max(0, g.flash - dt);
+    g.shake = Math.max(0, g.shake - dt);
+    if (g.light <= 0) { g.light = 0; endGame(); }
+  }
+
+  function rect(x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(Math.round(x), Math.round(y), w, h); }
+  function disc(lx, ly, lr, c) {
+    var cx = Math.round(lx * S), cy = Math.round(ly * S), r = Math.max(1, Math.round(lr * S));
+    ctx.fillStyle = c;
+    for (var dy = -r; dy <= r; dy++) {
+      var hw = Math.round(Math.sqrt(r * r + 0.5 - dy * dy));
+      ctx.fillRect(cx - hw, cy + dy, hw * 2 + 1, 1);
+    }
+  }
+
+  function draw() {
+    var ox = 0, oy = 0;
+    if (g.shake > 0) { ox = Math.random() < 0.5 ? -1 : 1; oy = Math.random() < 0.5 ? -1 : 1; }
+    ctx.setTransform(1, 0, 0, 1, ox, oy);
+
+    rect(-2, -2, PW + 4, PH + 4, "#161d40");
+    var i, s, k;
+    for (i = 0; i < streaks.length; i++) {
+      var st = streaks[i];
+      rect(st.x * S, (st.y - st.len) * S, 1, Math.round(st.len * S), st.c);
+    }
+    for (i = 0; i < g.stones.length; i++) {
+      s = g.stones[i];
+      disc(s.x, s.y, s.vis + 3, C.deeper);
+      disc(s.x + s.n1 * s.vis * 0.7, s.y + s.n2 * s.vis * 0.5, s.vis * 0.7, C.stone);
+      disc(s.x, s.y, s.vis, C.stone);
+      disc(s.x - s.vis * 0.3, s.y - s.vis * 0.3, s.vis * 0.45, C.mist);
+    }
+
+    // darkness, drawn as a dithered pixel mask around the lantern
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    var img = ctx.getImageData(0, 0, PW, PH), d = img.data;
+    var lx = g.px * S, ly = g.py * S, R = lightRadius() * S;
+    for (var y = 0; y < PH; y++) {
+      for (var x = 0; x < PW; x++) {
+        var dist = Math.sqrt((x - lx) * (x - lx) + (y - ly) * (y - ly));
+        var v = 1 - dist / R + (BAYER[(y & 3) * 4 + (x & 3)] / 16 - 0.5) * 0.3;
+        var m = v > 0.45 ? 1 : (v > 0.2 ? 0.5 : 0.15);
+        if (m < 1) {
+          var o = (y * PW + x) * 4;
+          d[o] = d[o] * m; d[o + 1] = d[o + 1] * m; d[o + 2] = d[o + 2] * m;
+        }
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    ctx.setTransform(1, 0, 0, 1, ox, oy);
+
+    // fireflies stay visible in the dark
+    for (i = 0; i < g.fireflies.length; i++) {
+      var f = g.fireflies[i];
+      var fx = Math.round((f.x + f.bx) * S), fy = Math.round(f.y * S);
+      var on = Math.sin(f.ph * 2) > -0.3;
+      if (on) {
+        rect(fx - 1, fy, 3, 1, C.glow); rect(fx, fy - 1, 1, 3, C.glow);
+        rect(fx - 2, fy - 2, 1, 1, C.deep);
+      } else {
+        rect(fx, fy, 1, 1, C.glow);
+      }
+    }
+
+    for (i = 0; i < g.sparks.length; i++) {
+      var p = g.sparks[i];
+      rect(p.x * S, p.y * S, 1, 1, p.color);
+    }
+
+    // lantern sprite
+    var cx = Math.round(g.px * S), cy = Math.round(g.py * S);
+    var tall = Math.sin(g.t * 14) > 0 ? 5 : 4;
+    rect(cx - 2, cy - 7, 5, 1, C.brown);
+    rect(cx - 3, cy - 6, 1, 1, C.brown); rect(cx + 3, cy - 6, 1, 1, C.brown);
+    rect(cx - 3, cy - 5, 7, 1, C.brown);
+    rect(cx - 3, cy - 4, 7, 7, C.flame);
+    rect(cx - 1, cy + 2 - tall, 3, tall, C.glow);
+    rect(cx - 3, cy + 3, 7, 1, C.brown);
+
+    if (g.flash > 0) { ctx.globalAlpha = 0.4; rect(-2, -2, PW + 4, PH + 4, C.hit); ctx.globalAlpha = 1; }
+  }
+
+  function updateHud() {
+    elDist.textContent = Math.floor(g.dist) + "m";
+    elFly.textContent = g.flies;
+    var pct = Math.max(0, Math.min(100, g.light));
+    var on = Math.ceil(pct / 100 * SEGS);
+    for (var i = 0; i < SEGS; i++) segEls[i].className = i < on ? "on" : "";
+    meter.className = "meter" + (pct < 25 ? " low" : "");
+    meter.setAttribute("aria-valuenow", Math.round(pct));
+  }
+
+  function startGame() {
+    var typed = nameInput.value.replace(/\s+/g, " ").trim().slice(0, 16);
+    if (!typed) {
+      document.getElementById("nameErr").textContent = "Type a name to save your score.";
+      nameInput.focus();
+      return;
+    }
+    document.getElementById("nameErr").textContent = "";
+    playerName = typed;
+    try { localStorage.setItem("lantern-run-name", typed); } catch (e) {}
+    newGame();
+    state = "playing";
+    startCard.hidden = true;
+    overCard.hidden = true;
+    updateHud();
+  }
+
+  function endGame() {
+    state = "over";
+    var d = Math.floor(g.dist), isBest = d > best;
+    if (isBest) { best = d; try { localStorage.setItem("lantern-run-best", String(best)); } catch (e) {} }
+    elBest.textContent = best + "m";
+    document.getElementById("overTitle").textContent = isBest && d > 0 ? "New best run" : "The flame went out";
+    document.getElementById("rDist").textContent = d + "m";
+    document.getElementById("rFly").textContent = g.flies;
+    document.getElementById("rBest").textContent = best + "m";
+    submitScore(d, g.flies);
+    overCard.hidden = false;
+    document.getElementById("againBtn").focus();
+  }
+
+  // ---- Online leaderboard (Supabase). Paste your two values below. ----
+  var CONFIG = {
+    url: "PASTE_YOUR_SUPABASE_PROJECT_URL_HERE",
+    key: "PASTE_YOUR_SUPABASE_ANON_PUBLIC_KEY_HERE"
+  };
+  var online = CONFIG.url.indexOf("https://") === 0 && CONFIG.key.indexOf("PASTE") !== 0;
+
+  var playerName = "";
+  var nameInput = document.getElementById("nameInput");
+  try { nameInput.value = localStorage.getItem("lantern-run-name") || ""; } catch (e) {}
+  nameInput.addEventListener("keydown", function (e) { if (e.key === "Enter") startGame(); });
+  var elBoard = document.getElementById("boardList");
+  var elNote = document.getElementById("boardNote");
+  var rows = [];
+  var LS_KEY = "lantern-run-scores";
+
+  function boardNote(t) { elNote.textContent = t || ""; }
+
+  function topUnique(list) {
+    var seen = {}, out = [];
+    list.sort(function (a, b) { return b.dist - a.dist; });
+    list.forEach(function (r) {
+      var k = r.name.toLowerCase();
+      if (!seen[k]) { seen[k] = 1; out.push(r); }
+    });
+    return out.slice(0, 10);
+  }
+
+  function renderBoard() {
+    elBoard.textContent = "";
+    if (!rows.length) {
+      var e = document.createElement("li");
+      e.style.display = "block";
+      var sp = document.createElement("span");
+      sp.className = "empty";
+      sp.textContent = "No runs yet. Finish one to take first place.";
+      e.appendChild(sp);
+      elBoard.appendChild(e);
+      return;
+    }
+    rows.forEach(function (r, i) {
+      var li = document.createElement("li");
+      if (playerName && r.name.toLowerCase() === playerName.toLowerCase()) li.className = "me";
+      var rk = document.createElement("span"); rk.className = "rank"; rk.textContent = i + 1;
+      var who = document.createElement("span"); who.className = "who"; who.textContent = r.name;
+      var ds = document.createElement("span"); ds.className = "dist"; ds.textContent = r.dist + "m";
+      var fl = document.createElement("span"); fl.className = "flies"; fl.textContent = r.flies + " fl";
+      li.appendChild(rk); li.appendChild(who); li.appendChild(ds); li.appendChild(fl);
+      elBoard.appendChild(li);
+    });
+  }
+
+  function loadLocal() {
+    var list = [];
+    try { list = JSON.parse(localStorage.getItem(LS_KEY) || "[]"); } catch (e) {}
+    rows = topUnique((Array.isArray(list) ? list : []).filter(function (r) { return r && r.name; })
+      .map(function (r) { return { name: String(r.name).slice(0, 16), dist: +r.dist || 0, flies: +r.flies || 0 }; }));
+  }
+
+  function headers() {
+    return { "apikey": CONFIG.key, "Authorization": "Bearer " + CONFIG.key, "Content-Type": "application/json" };
+  }
+
+  function loadOnline() {
+    return fetch(CONFIG.url + "/rest/v1/scores?select=name,dist,flies&order=dist.desc&limit=200", { headers: headers() })
+      .then(function (res) { if (!res.ok) throw new Error("load"); return res.json(); })
+      .then(function (data) {
+        rows = topUnique(data.map(function (r) { return { name: String(r.name || "").slice(0, 16), dist: +r.dist || 0, flies: +r.flies || 0 }; }));
+        boardNote("");
+        renderBoard();
+      });
+  }
+
+  function useLocal() {
+    online = false;
+    loadLocal();
+    boardNote("Online leaderboard is not connected. Scores are saved on this device only.");
+    renderBoard();
+  }
+
+  function submitScore(d, f) {
+    if (d <= 0) return;
+    if (!online) {
+      var list = rows.slice();
+      list.push({ name: playerName, dist: d, flies: f });
+      rows = topUnique(list);
+      try { localStorage.setItem(LS_KEY, JSON.stringify(rows)); } catch (e) {}
+      renderBoard();
+      return;
+    }
+    fetch(CONFIG.url + "/rest/v1/scores", {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify({ name: playerName, dist: d, flies: f })
+    }).then(function (res) {
+      if (!res.ok) throw new Error("save");
+      return loadOnline();
+    }).catch(function () { boardNote("Could not reach the leaderboard. Your score was not saved online."); });
+  }
+
+  if (online) {
+    loadOnline().catch(function () { useLocal(); });
+  } else {
+    useLocal();
+  }
+
+  var last = 0;
+  function frame(ts) {
+    var dt = Math.min(0.05, (ts - last) / 1000 || 0);
+    last = ts;
+    if (state === "playing") { update(dt); updateHud(); } else { g.t += dt; }
+    draw();
+    requestAnimationFrame(frame);
+  }
+  updateHud();
+  requestAnimationFrame(frame);
+
+  function pointerToX(e) { var r = cv.getBoundingClientRect(); return (e.clientX - r.left) / r.width * W; }
+  cv.addEventListener("pointermove", function (e) { if (state === "playing") targetX = pointerToX(e); });
+  cv.addEventListener("pointerdown", function (e) { if (state === "playing") targetX = pointerToX(e); });
+  window.addEventListener("keydown", function (e) {
+    var k = e.key;
+    if (k === "ArrowLeft" || k === "a" || k === "A") { keys.left = true; e.preventDefault(); }
+    else if (k === "ArrowRight" || k === "d" || k === "D") { keys.right = true; e.preventDefault(); }
+  });
+  window.addEventListener("keyup", function (e) {
+    var k = e.key;
+    if (k === "ArrowLeft" || k === "a" || k === "A") keys.left = false;
+    else if (k === "ArrowRight" || k === "d" || k === "D") keys.right = false;
+  });
+  document.getElementById("startBtn").addEventListener("click", startGame);
+  document.getElementById("againBtn").addEventListener("click", startGame);
+})();
+</script>
+</body>
+</html>
