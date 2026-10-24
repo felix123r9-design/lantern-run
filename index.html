@@ -491,7 +491,7 @@
 
   function loadOnline() {
     return fetch(CONFIG.url + "/rest/v1/scores?select=name,dist,flies&order=dist.desc&limit=200", { headers: headers() })
-      .then(function (res) { if (!res.ok) throw new Error("load"); return res.json(); })
+      .then(function (res) { if (!res.ok) throw new Error("HTTP " + res.status); return res.json(); })
       .then(function (data) {
         rows = topUnique(data.map(function (r) { return { name: String(r.name || "").slice(0, 16), dist: +r.dist || 0, flies: +r.flies || 0 }; }));
         boardNote("");
@@ -499,10 +499,10 @@
       });
   }
 
-  function useLocal() {
+  function useLocal(detail) {
     online = false;
     loadLocal();
-    boardNote("Online leaderboard is not connected. Scores are saved on this device only.");
+    boardNote("Online leaderboard is not connected. Scores are saved on this device only." + (detail ? " (" + detail + ")" : ""));
     renderBoard();
   }
 
@@ -527,7 +527,7 @@
   }
 
   if (online) {
-    loadOnline().catch(function () { useLocal(); });
+    loadOnline().catch(function (err) { useLocal(err && err.message); });
   } else {
     useLocal();
   }
