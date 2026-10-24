@@ -426,8 +426,8 @@
 
   // ---- Online leaderboard (Supabase). Paste your two values below. ----
   var CONFIG = {
-    url: "PASTE_YOUR_SUPABASE_PROJECT_URL_HERE",
-    key: "PASTE_YOUR_SUPABASE_ANON_PUBLIC_KEY_HERE"
+    url: "https://pgfasyipriteddcjvfvo.supabase.co",
+    key: "sb_publishable_svWwdXuOTeQF4nBcmeEvRQ_of6f-s_A"
   };
   var online = CONFIG.url.indexOf("https://") === 0 && CONFIG.key.indexOf("PASTE") !== 0;
 
@@ -484,7 +484,9 @@
   }
 
   function headers() {
-    return { "apikey": CONFIG.key, "Authorization": "Bearer " + CONFIG.key, "Content-Type": "application/json" };
+    var h = { "apikey": CONFIG.key, "Content-Type": "application/json" };
+    if (CONFIG.key.indexOf("eyJ") === 0) h["Authorization"] = "Bearer " + CONFIG.key;
+    return h;
   }
 
   function loadOnline() {
